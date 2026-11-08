@@ -118,6 +118,12 @@ internal sealed class ClipboardPanel : IslandPanel
         {
             var text = Clipboard.GetText(); if (string.IsNullOrWhiteSpace(text)) return;
             if (text.Length > MaxText) text = text[..MaxText];
+            if (Settings.Load().CleanLinks && LinkClean.Try(text, out var cleaned) && cleaned != text)
+            {
+                suppressUntil = Environment.TickCount64 + 1200;
+                Clipboard.SetText(cleaned);
+                text = cleaned;
+            }
             entry = new ClipboardEntry { Kind = IsLink(text) ? "link" : "text", Text = text };
         }
         else if (Clipboard.ContainsImage())
@@ -223,6 +229,30 @@ internal sealed class ClipboardPanel : IslandPanel
         Flash("Copied"); Bump(e);
     }
 
+    private void PastePlain()
+    {
+        string text;
+        try { if (!Clipboard.ContainsText()) { Flash("Nothing to paste"); return; } text = Clipboard.GetText() ?? ""; }
+        catch { Flash("Clipboard is busy, try again"); return; }
+        if (text.Length == 0) { Flash("Nothing to paste"); return; }
+        suppressUntil = Environment.TickCount64 + 1200;
+        Hub.Copy(text);
+        Hub.PasteIntoForeground();
+        Flash("Pasted as plain text");
+    }
+
+    private void CleanCurrent()
+    {
+        string text;
+        try { if (!Clipboard.ContainsText()) { Flash("Copy a single link first"); return; } text = Clipboard.GetText() ?? ""; }
+        catch { Flash("Clipboard is busy, try again"); return; }
+        if (!LinkClean.Try(text, out var cleaned)) { Flash("Copy a single http(s) link"); return; }
+        if (cleaned == text.Trim()) { Flash("Link is already clean"); return; }
+        suppressUntil = Environment.TickCount64 + 1200;
+        Hub.Copy(cleaned);
+        Flash("Tracking removed");
+    }
+
     // ---------------------------------------------------------------- UI
     protected override FrameworkElement Build()
     {
@@ -235,9 +265,25 @@ internal sealed class ClipboardPanel : IslandPanel
         var bar = new Grid { Height = 36 }; bar.ColumnDefinitions.Add(new ColumnDefinition()); bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         bar.Children.Add(box); Grid.SetColumn(seg, 1); bar.Children.Add(seg);
 
+        bool auto = Settings.Load().CleanLinks;
+        var autoLabel = Ui.Text(auto ? "Auto clean on" : "Auto clean off", 12.5, auto ? Ui.B(Accent) : Ui.Dim, FontWeights.SemiBold);
+        var autoBtn = new Border { Height = 30, Padding = new Thickness(12, 0, 12, 0), CornerRadius = new CornerRadius(15), Background = auto ? Ui.B(Accent, 0x2A) : Ui.Chip, Cursor = Cursors.Hand, Child = autoLabel, Margin = new Thickness(8, 0, 0, 0) };
+        autoBtn.MouseLeftButtonUp += (_, e) =>
+        {
+            var s = Settings.Load(); s.CleanLinks = !s.CleanLinks; s.Save();
+            autoLabel.Text = s.CleanLinks ? "Auto clean on" : "Auto clean off";
+            autoLabel.Foreground = s.CleanLinks ? Ui.B(Accent) : Ui.Dim;
+            autoBtn.Background = s.CleanLinks ? Ui.B(Accent, 0x2A) : Ui.Chip;
+            e.Handled = true;
+        };
+        var tools = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 8, 0, 0) };
+        tools.Children.Add(Ui.Button("Paste plain text", Accent, PastePlain, 30));
+        var clean = Ui.Button("Clean link", Accent, CleanCurrent, 30); clean.Margin = new Thickness(8, 0, 0, 0); tools.Children.Add(clean);
+        tools.Children.Add(autoBtn);
+
         list = new StackPanel(); scroll = Ui.Scroll(list); Grid.SetRow(scroll, 2);
-        var body = new Grid(); body.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); body.RowDefinitions.Add(new RowDefinition { Height = new GridLength(8) }); body.RowDefinitions.Add(new RowDefinition());
-        body.Children.Add(bar); body.Children.Add(scroll);
+        var body = new Grid(); body.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); body.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); body.RowDefinitions.Add(new RowDefinition { Height = new GridLength(8) }); body.RowDefinitions.Add(new RowDefinition());
+        body.Children.Add(bar); Grid.SetRow(tools, 1); body.Children.Add(tools); body.Children.Add(scroll);
 
         status = Ui.Text("", 12.5, Ui.B(Accent), FontWeights.SemiBold); status.VerticalAlignment = VerticalAlignment.Center; status.Margin = new Thickness(0, 0, 12, 0);
         var note = Ui.Text("Passwords you copy are saved too", 12, Ui.Dim); note.VerticalAlignment = VerticalAlignment.Center; note.Margin = new Thickness(0, 0, 8, 0);
@@ -365,4 +411,33 @@ internal sealed class ClipboardPanel : IslandPanel
 
     public override void OnShown() { if (IsBuilt) RenderList(); }   // refresh relative times
     public override void OnHidden() { clearArmed = false; if (saveTimer is { IsEnabled: true }) { saveTimer.Stop(); Store.Save("clipboard", data); } }
+}
+
+/// <summary>Strips tracking query parameters from a single http(s) URL. Returns false unless the text is only that URL.</summary>
+internal static class LinkClean
+{
+    private static readonly string[] Exact = { "fbclid", "gclid", "mc_cid", "mc_eid", "igshid", "si", "ref", "ref_src" };
+
+    public static bool Try(string text, out string cleaned)
+    {
+        cleaned = text;
+        var raw = text.Trim();
+        if (raw.Length < 8 || raw.Any(char.IsWhiteSpace)) return false;
+        if (!raw.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && !raw.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return false;
+        if (!Uri.TryCreate(raw, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)) return false;
+        string query = uri.Query;
+        if (query.Length <= 1) { cleaned = raw; return true; }
+        var kept = new List<string>();
+        foreach (var part in query[1..].Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            int eq = part.IndexOf('=');
+            string key = Uri.UnescapeDataString(eq < 0 ? part : part[..eq]);
+            if (key.StartsWith("utm_", StringComparison.OrdinalIgnoreCase) || Exact.Any(x => key.Equals(x, StringComparison.OrdinalIgnoreCase))) continue;
+            kept.Add(part);
+        }
+        var builder = new UriBuilder(uri) { Query = string.Join("&", kept) };
+        cleaned = builder.Uri.AbsoluteUri;
+        if (cleaned.EndsWith('?')) cleaned = cleaned[..^1];
+        return true;
+    }
 }
