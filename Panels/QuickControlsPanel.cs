@@ -100,7 +100,7 @@ internal sealed class QuickControlsPanel : IslandPanel
         return Ui.Card(grid, 14, 16);
     }
 
-    private void Arm(bool on) { confirmArmed = on; if (confirm != null) confirm.Visibility = on ? Visibility.Visible : Visibility.Collapsed; }
+    private void Arm(bool on) { if (confirm != null) confirm.Visibility = on ? Visibility.Visible : Visibility.Collapsed; }
 
     private void EmptyBin()
     {
