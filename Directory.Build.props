@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <!-- Lets `dotnet build` download Windows desktop reference assemblies on Linux. No effect on Windows. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+</Project>

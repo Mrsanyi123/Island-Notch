@@ -84,7 +84,7 @@ internal sealed class TimersPanel : IslandPanel
             if (data.HydrationOn && DateTime.UtcNow >= hNext)
             {
                 hNext = DateTime.UtcNow.AddMinutes(data.HydrationMin);
-                Hub.Alert("Time to hydrate", "Have a glass of water", "\U0001F4A7", "#5AC8FA", false);
+                if (Settings.Load().HydrationAlerts) Hub.Alert("Time to hydrate", "Have a glass of water", "\U0001F4A7", "#5AC8FA", false);
             }
             if (IsBuilt && shown) UpdateAll();
         }
@@ -117,9 +117,9 @@ internal sealed class TimersPanel : IslandPanel
         if (!pBreak)
         {
             data.Cycles++; Save();
-            Hub.Alert("Focus complete", "Take a " + BreakMin + " minute break", "", "#FF9F0A");
+            if (Settings.Load().TimerAlerts) Hub.Alert("Focus complete", "Take a " + BreakMin + " minute break", "", "#FF9F0A");
         }
-        else Hub.Alert("Break over", "Ready for the next focus session", "", "#30D158");
+        else if (Settings.Load().TimerAlerts) Hub.Alert("Break over", "Ready for the next focus session", "", "#30D158");
         pBreak = !pBreak; pRemain = PhaseLen(pBreak); pEnd = DateTime.UtcNow + pRemain; // next phase starts right away
     }
 
@@ -141,7 +141,7 @@ internal sealed class TimersPanel : IslandPanel
     private void CountdownFinished()
     {
         cRun = false; cRemain = TimeSpan.FromMinutes(cTotalMin);
-        Hub.Alert("Timer done", cTotalMin + (cTotalMin == 1 ? " minute is up" : " minutes are up"), "", "#FF9F0A");
+        if (Settings.Load().TimerAlerts) Hub.Alert("Timer done", cTotalMin + (cTotalMin == 1 ? " minute is up" : " minutes are up"), "", "#FF9F0A");
     }
 
     private void SwToggle() { if (swRun) { sw.Stop(); swRun = false; } else { sw.Start(); swRun = true; } SyncFast(); UpdateAll(); }

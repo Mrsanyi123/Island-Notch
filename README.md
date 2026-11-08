@@ -11,6 +11,14 @@ A small Windows 10/11 tray app for revenue, your Google calendar, and unread inb
 
 If PowerShell cannot find dotnet, use `& 'C:\Program Files\dotnet\dotnet.exe' run` (or `build`). Only one Island instance can run in your Windows session. Exit from the tray before rebuilding if Windows reports that the executable is locked.
 
+## First launch
+
+The first time Island starts, a setup window opens and the pill stays hidden. You can connect Stripe, Polar, or Google, turn alerts on, or choose Start with Windows. Skip and Finish do the same thing: they mark setup complete and show the pill. Later launches go straight to the pill. Setup does not run again.
+
+## Settings
+
+Right-click the tray icon and choose Settings, double-click the tray icon, or open the gear inside the island. Settings is its own window: General, Connections, Apps, Alerts, Permissions, and About. It uses the same black glass as the island. Keys stay encrypted. Saving a connection does not close the window.
+
 When the island is expanded, click **Apps** at the top left to browse its built-in apps by name and icon. Click an app to open it inside the island, or use the dock to switch apps directly.
 
 Running countdowns, Pomodoro sessions, and stopwatches automatically appear in the closed notch with their app icon and update every second. Collapsing the Claude page shows today's token usage; running timers take priority. In Message, **Show on notch** and **Flash it** close the island to display your animated message there. An enabled message takes priority over task text until switched off; notifications can temporarily interrupt it.

@@ -67,6 +67,7 @@ internal sealed class SoundsSlider : Border
     private readonly Ellipse knob = new() { Width = 18, Height = 18, Fill = Brushes.White, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center };
     private readonly Action<double, bool> changed;
     public double Value { get; private set; }
+    public void SetSilent(double value) { Value = Math.Clamp(value, 0, 1); Place(); }
 
     public SoundsSlider(double value, Color accent, Action<double, bool> changed)
     {
