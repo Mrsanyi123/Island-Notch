@@ -110,6 +110,7 @@ internal sealed class IslandWindow : Window
         MouseLeftButtonDown += (_, _) => { leave.Stop(); Expand(true); };
         Deactivated += (_, _) => { if (expanded && !IsMouseOver) leave.Start(); };
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape && expanded) { Keyboard.ClearFocus(); Expand(false); e.Handled = true; } };
+        PreviewMouseWheel += OnWheel;
         hover.Tick += (_, _) => { hover.Stop(); Expand(true); };
         leave.Tick += (_, _) => { leave.Stop(); if (TypingInside()) return; Expand(false); };
         SourceInitialized += (_, _) =>
@@ -256,6 +257,15 @@ internal sealed class IslandWindow : Window
     }
 
     public void OpenSettings() { foreach (Window w in Application.Current.Windows) if (w is SettingsWindow) { w.Activate(); return; } new SettingsWindow().Show(); }
+
+    private void OnWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (host.Clip == null || !host.Clip.FillContains(e.GetPosition(host))) return;
+        if (!expanded) { leave.Stop(); Expand(true); e.Handled = true; return; }
+        if (current.Id != "nowplaying" || current is not NowPlayingPanel playing) return;
+        playing.Skip(e.Delta > 0);
+        e.Handled = true;
+    }
 
     private bool OverNotch(DragEventArgs e)
     {

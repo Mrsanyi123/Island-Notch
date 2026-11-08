@@ -46,6 +46,8 @@ internal sealed class NowPlayingPanel : IslandPanel
 
     public override void Start() => _ = Attach();
 
+    public void Skip(bool next) => _ = Call(s => next ? s.TrySkipNextAsync() : s.TrySkipPreviousAsync());
+
     public override void Tick()
     {
         var current = session;
