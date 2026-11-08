@@ -26,6 +26,16 @@ internal static class Hub
 
     /// <summary>Open the Settings window.</summary>
     public static Action? OpenSettings { get; internal set; }
+    /// <summary>Show an island panel by id and expand.</summary>
+    public static Action<string>? ShowPanel { get; internal set; }
+    public static event Action<bool>? PauseChanged;
+    public static bool Paused { get; private set; }
+    public static void SetPaused(bool paused)
+    {
+        bool changed = Paused != paused;
+        Paused = paused;
+        if (changed) PauseChanged?.Invoke(paused);
+    }
     /// <summary>Refresh revenue/calendar/email now.</summary>
     public static Action? RefreshNow { get; internal set; }
 

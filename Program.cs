@@ -18,12 +18,23 @@ internal static class Program
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Settings", null, (_, _) => window.OpenSettings());
         menu.Items.Add("Refresh now", null, (_, _) => window.RefreshNow());
-        var pause=new Forms.ToolStripMenuItem("Pause alerts") { CheckOnClick=true };pause.CheckedChanged+=(_,_)=>window.PauseAlerts=pause.Checked;menu.Items.Add(pause);
+        var pause=new Forms.ToolStripMenuItem("Pause alerts") { CheckOnClick=true };
+        bool pauseEcho=false;
+        pause.CheckedChanged+=(_,_)=>{ if(pauseEcho)return; window.PauseAlerts=pause.Checked; };
+        Hub.PauseChanged+=on=>{ pauseEcho=true; pause.Checked=on; pauseEcho=false; };
+        menu.Items.Add(pause);
         var startup=new Forms.ToolStripMenuItem("Start with Windows") {Checked=Startup.Enabled};startup.Click+=(_,_)=>{try{Startup.Set(!startup.Checked);startup.Checked=Startup.Enabled;}catch(Exception ex){MessageBox.Show(ex is InvalidOperationException?ex.Message:"Could not update your Windows startup setting.","Island");}};menu.Items.Add(startup);
         menu.Items.Add("Exit", null, (_, _) => { window.Close(); app.Shutdown(); });
         tray.ContextMenuStrip = menu;
         tray.DoubleClick += (_, _) => window.OpenSettings();
-        app.Run(window);
+        if (pv < 0 && !Settings.Load().Onboarded)
+        {
+            var tour = new OnboardingWindow();
+            tour.Closed += (_, _) => { if (!window.IsVisible) window.Show(); };
+            tour.Show();
+            app.Run();
+        }
+        else app.Run(window);
         return 0;
     }
 }

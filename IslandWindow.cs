@@ -67,7 +67,18 @@ internal sealed class IslandWindow : Window
     private nint handle;
     private AlertItem? currentAlert;
     private int activityIndex, ticks;
-    public bool PauseAlerts { get; set; }
+    private bool pauseAlerts;
+    public bool PauseAlerts
+    {
+        get => pauseAlerts;
+        set
+        {
+            if (pauseAlerts == value) return;
+            pauseAlerts = value;
+            if (value) alerts.Clear();
+            Hub.SetPaused(value);
+        }
+    }
 
     public IslandWindow()
     {
@@ -77,11 +88,14 @@ internal sealed class IslandWindow : Window
         host.Resources.MergedDictionaries.Add(Ui.Resources); System.Windows.Documents.TextElement.SetForeground(host, Brushes.White); // default text colour for any element that doesn't set one (e.g. emoji)
 
         Hub.Dashboard = dashboard; Hub.OpenSettings = OpenSettings; Hub.RefreshNow = RefreshNow; Hub.Collapse = () => Expand(false); Hub.FocusInput = FocusInput;
+        Hub.PauseChanged += on => { if (pauseAlerts != on) PauseAlerts = on; };
+        var previousChanged = SettingsWindow.Changed; SettingsWindow.Changed = () => { previousChanged?.Invoke(); ApplyPanels(); };
         Hub.AlertRequested += item => { if (!PauseAlerts && alerts.Count < 50) { alerts.Enqueue(item); ShowNextAlert(); } };
         Hub.NotchOverlayChanged += OnOverlayChanged;
 
         pinButton = Ui.IconButton("", "Show this on the notch when collapsed", TogglePin, 34); pinButton.Child = pinGlyph;
         panels = DiscoverPanels(); current = panels.First(p => p.Id == "home");
+        Hub.ShowPanel = id => { var panel = panels.FirstOrDefault(p => p.Id == id); if (panel != null && Settings.Load().Allows(panel.Id)) { ShowPanel(panel, true); Expand(true); } };
         appsPanel = new AppsPanel(panels.ToArray(), panel => ShowPanel(panel, true));
         panels.Add(appsPanel);
 
@@ -118,7 +132,7 @@ internal sealed class IslandWindow : Window
             handle = new WindowInteropHelper(this).Handle; Hub.Handle = handle;
             NativeMethods.SetWindowLong(handle, -20, (nint)((long)NativeMethods.GetWindowLong(handle, -20) | 0x08000080));
             HwndSource.FromHwnd(handle)?.AddHook(Hook); Place();
-            foreach (var p in panels) Safe(p.Start);
+            var allowed = Settings.Load(); foreach (var p in panels) if (allowed.Allows(p.Id)) StartPanel(p);
             if (!classHandlersRegistered)
             {
                 classHandlersRegistered = true;
@@ -126,7 +140,7 @@ internal sealed class IslandWindow : Window
                 EventManager.RegisterClassHandler(typeof(PasswordBox), PreviewMouseLeftButtonDownEvent, new MouseButtonEventHandler((s, _) => FocusInput((UIElement)s)));
             }
         };
-        monitor.Tick += (_, _) => { CheckFullscreen(); ShowNextAlert(); foreach (var p in panels) Safe(p.Tick); if (++ticks % 30 == 0) UpdateBattery(); SetActivity(); }; monitor.Start();
+        monitor.Tick += (_, _) => { CheckFullscreen(); ShowNextAlert(); var allowed = Settings.Load(); foreach (var p in panels) if (allowed.Allows(p.Id)) Safe(p.Tick); if (++ticks % 30 == 0) UpdateBattery(); SetActivity(); }; monitor.Start();
         Closed += (_, _) => { animator.Stop(); dashboard.Stop(); rotation.Stop(); alertTimer.Stop(); monitor.Stop(); hover.Stop(); leave.Stop(); };
     }
 
@@ -150,7 +164,20 @@ internal sealed class IslandWindow : Window
         t.Start();
     }
 
+    private readonly HashSet<string> started = new();
     private static void Safe(Action a) { try { a(); } catch { /* one broken panel must never take the island down */ } }
+    private void StartPanel(IslandPanel panel) { if (started.Add(panel.Id)) Safe(panel.Start); }
+    private void ApplyPanels()
+    {
+        var allowed = Settings.Load();
+        foreach (var (panel, button, _) in dockItems)
+        {
+            bool on = allowed.Allows(panel.Id);
+            button.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+            if (on) StartPanel(panel);
+        }
+        if (!allowed.Allows(current.Id)) ShowPanel(panels.First(p => p.Id == "home"), false);
+    }
 
     private static List<IslandPanel> DiscoverPanels()
     {
@@ -253,7 +280,7 @@ internal sealed class IslandWindow : Window
             var b = System.Windows.Forms.Screen.PrimaryScreen!.Bounds;
             full = cls.ToString() is not ("Progman" or "WorkerW") && rect.Left <= b.Left && rect.Top <= b.Top && rect.Right >= b.Right && rect.Bottom >= b.Bottom;
         }
-        if (full && IsVisible) Hide(); else if (!full && !IsVisible) Show();
+        if (full && IsVisible) Hide(); else if (!full && !IsVisible && Settings.Load().Onboarded) Show();
     }
 
     public void OpenSettings() { foreach (Window w in Application.Current.Windows) if (w is SettingsWindow) { w.Activate(); return; } new SettingsWindow().Show(); }
@@ -318,6 +345,7 @@ internal sealed class IslandWindow : Window
         panelHost.HorizontalAlignment = HorizontalAlignment.Center; panelHost.VerticalAlignment = VerticalAlignment.Top; panelHost.Margin = new Thickness(0, 68, 0, 0);
 
         // dock
+        var allowed = Settings.Load();
         foreach (var p in panels.Where(p => p != appsPanel))
         {
             var g = Ui.Glyph(p.Glyph, 18, Ui.Dim);
@@ -325,6 +353,7 @@ internal sealed class IslandWindow : Window
             var panel = p;
             b.MouseEnter += (_, _) => { if (panel != current) b.Background = Ui.Chip; }; b.MouseLeave += (_, _) => { if (panel != current) b.Background = Brushes.Transparent; };
             b.MouseLeftButtonUp += (_, e) => { ShowPanel(panel, true); e.Handled = true; };
+            if (!allowed.Allows(p.Id)) b.Visibility = Visibility.Collapsed;
             dockItems.Add((p, b, g)); dockRow.Children.Add(b);
         }
         var dock = new Border { Background = Ui.B("#0F0F11"), BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(27), Padding = new Thickness(7), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, 16), Child = dockRow };
@@ -427,11 +456,12 @@ internal sealed class IslandWindow : Window
     private void SetActivity()
     {
         if (currentAlert != null) return;
+        var settings = Settings.Load();
         // Running tasks remain visible even when the user switches to another page.
-        var task = panels.FirstOrDefault(p => p.ActiveTaskText != null);
+        var task = panels.FirstOrDefault(p => settings.Allows(p.Id) && p.ActiveTaskText != null);
         if (task != null) { SetActivityContent(task.ActiveTaskText!, task); return; }
-        if (current is ClaudePanel) { SetActivityContent(current.RestingText!, current); return; }
-        var settings = Settings.Load(); string pinned = settings.PinnedPanel;
+        if (current is ClaudePanel && settings.Allows(current.Id)) { SetActivityContent(current.RestingText!, current); return; }
+        string pinned = settings.PinnedPanel;
         if (pinned.Length > 0)
         {
             var panel = panels.FirstOrDefault(p => p.Id == pinned);

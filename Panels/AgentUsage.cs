@@ -91,7 +91,11 @@ internal static class AgentUsage
                     if (today) events++;
                 }
                 if (!root.TryGetProperty("payload", out var payload) || payload.ValueKind != JsonValueKind.Object) continue;
-                if (payload.TryGetProperty("cwd", out var cwd) && cwd.ValueKind == JsonValueKind.String) project = Name(cwd.GetString());
+                if (payload.TryGetProperty("cwd", out var cwd) && cwd.ValueKind == JsonValueKind.String)
+                {
+                    string name = Name(cwd.GetString());
+                    if (name.Length > 0) project = name;
+                }
                 if (!today) continue;
                 if (payload.TryGetProperty("info", out var info) && info.ValueKind == JsonValueKind.Object && info.TryGetProperty("last_token_usage", out var last))
                     tokens += Math.Max(Num(last, "total_tokens"), Num(last, "input_tokens") + Num(last, "output_tokens"));

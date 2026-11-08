@@ -85,7 +85,7 @@ internal sealed class ClipboardPanel : IslandPanel
 
     private void OnWindowMessage(int msg, nint wp, nint lp)
     {
-        if (msg != WM_CLIPBOARDUPDATE || capturePending) return;
+        if (msg != WM_CLIPBOARDUPDATE || capturePending || !Settings.Load().Allows("clipboard")) return;
         capturePending = true;
         Application.Current?.Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => TryCapture(0)));
     }
