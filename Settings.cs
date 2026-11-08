@@ -14,6 +14,7 @@ internal sealed class Settings
     public bool SaleAlerts { get; set; }=true;
     public bool MeetingAlerts { get; set; }=true;
     public bool EmailAlerts { get; set; }=true;
+    public bool NowPlayingAlerts { get; set; }=true;
     /// <summary>Panel id whose RestingText owns the collapsed notch ("" = rotate, "clock" = time).</summary>
     public string PinnedPanel { get; set; }="";
     public static Settings Load() { try { return JsonSerializer.Deserialize<Settings>(File.ReadAllText(Path.Combine(Folder,"settings.json")))??new(); } catch { return new(); } }
