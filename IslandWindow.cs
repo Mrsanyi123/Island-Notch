@@ -103,6 +103,9 @@ internal sealed class IslandWindow : Window
         SettingsWindow.ConnectGoogle = async () => { await dashboard.Auth.Connect(); dashboard.Gmail.Reset(); dashboard.Meetings.Clear(); dashboard.Agenda.Clear(); await dashboard.Refresh(true); };
         SettingsWindow.DisconnectGoogle = () => { dashboard.Auth.Disconnect(); dashboard.Meetings.Clear(); dashboard.Agenda.Clear(); dashboard.Gmail.Reset(); dashboard.RaiseChanged(); };
         Loaded += async (_, _) => await dashboard.Refresh();
+        AllowDrop = true;
+        PreviewDragOver += OnShelfDrag;
+        PreviewDrop += OnShelfDrop;
         MouseEnter += (_, _) => { leave.Stop(); hover.Start(); }; MouseLeave += (_, _) => { hover.Stop(); leave.Start(); };
         MouseLeftButtonDown += (_, _) => { leave.Stop(); Expand(true); };
         Deactivated += (_, _) => { if (expanded && !IsMouseOver) leave.Start(); };
@@ -253,6 +256,30 @@ internal sealed class IslandWindow : Window
     }
 
     public void OpenSettings() { foreach (Window w in Application.Current.Windows) if (w is SettingsWindow) { w.Activate(); return; } new SettingsWindow().Show(); }
+
+    private bool OverNotch(DragEventArgs e)
+    {
+        if (host.Clip == null) return false;
+        var p = e.GetPosition(host);
+        return host.Clip.FillContains(p);
+    }
+
+    private void OnShelfDrag(object sender, DragEventArgs e)
+    {
+        bool ok = OverNotch(e) && (e.Data.GetDataPresent(DataFormats.FileDrop) || e.Data.GetDataPresent(DataFormats.UnicodeText) || e.Data.GetDataPresent(DataFormats.Text));
+        e.Effects = ok ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void OnShelfDrop(object sender, DragEventArgs e)
+    {
+        if (!OverNotch(e)) return;
+        if (!ShelfBoard.Add(e.Data)) return;
+        var shelf = panels.FirstOrDefault(p => p.Id == "shelf");
+        if (shelf != null) ShowPanel(shelf, true);
+        if (!expanded) Expand(true);
+        e.Handled = true;
+    }
     public async void RefreshNow() => await dashboard.Refresh(true);
 
     // ---- expanded chrome: header, panel host, dock ------------------------------------------------------------
